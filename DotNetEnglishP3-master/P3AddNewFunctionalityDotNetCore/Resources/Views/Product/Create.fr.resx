@@ -138,4 +138,25 @@
   <data name="Stock" xml:space="preserve">
     <value>Stock</value>
   </data>
+  <data name="MissingName" xml:space="preserve">
+    <value>Le nom est obligatoire</value>
+  </data>
+  <data name="MissingPrice" xml:space="preserve">
+    <value>Le prix est obligatoire</value>
+  </data>
+  <data name="PriceNotANumber" xml:space="preserve">
+    <value>Le prix doit être un nombre</value>
+  </data>
+  <data name="PriceNotGreaterThanZero" xml:space="preserve">
+    <value>Le prix doit être supérieur à zéro</value>
+  </data>
+  <data name="MissingQuantity" xml:space="preserve">
+    <value>La quantité est obligatoire</value>
+  </data>
+  <data name="QuantityNotAnInteger" xml:space="preserve">
+    <value>La quantité doit être un nombre entier</value>
+  </data>
+  <data name="QuantityNotGreaterThanZero" xml:space="preserve">
+    <value>La quantité doit être supérieure à zéro</value>
+  </data>
 </root>

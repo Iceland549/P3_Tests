@@ -1,28 +1,37 @@
-﻿using P3AddNewFunctionalityDotNetCore;
-using P3AddNewFunctionalityDotNetCore.Data;
+﻿
 using P3AddNewFunctionalityDotNetCore.Models;
 using P3AddNewFunctionalityDotNetCore.Models.Repositories;
 using P3AddNewFunctionalityDotNetCore.Models.Services;
 using P3AddNewFunctionalityDotNetCore.Models.ViewModels;
-using Microsoft.Extensions.Configuration;
-using System.Collections.Generic;
 
 using Xunit;
 
+using Microsoft.Extensions.Localization;
+using Moq;
+
 namespace P3AddNewFunctionalityDotNetCore.Tests
 {
-    public class ProductServiceTests
+    public class ProductServiceTests 
     {
-        private readonly ProductService _productService;
+        private readonly IProductService _productService;
+        private readonly Mock<ICart> _mockCart;
+        private readonly Mock<IProductRepository> _mockProductRepository;
+        private readonly Mock<IOrderRepository> _mockOrderRepository;
+        private readonly Mock<IStringLocalizer<ProductService>> _mockLocalizer;
 
         public ProductServiceTests()
         {
-            ICart _cart = new Cart();
-            P3Referential _context = new P3Referential();
-            IConfiguration _config = new Configuration();
-            IProductRepository _productRepository = new ProductRepository();
+            _mockCart = new Mock<ICart>();
+            _mockProductRepository = new Mock<IProductRepository>();
+            _mockOrderRepository = new Mock<IOrderRepository>();
+            _mockLocalizer = new Mock<IStringLocalizer<ProductService>>();
 
-            _productService = new ProductService(null, null, null, null);
+            _productService = new ProductService(
+                _mockCart.Object,
+                _mockProductRepository.Object,
+                _mockOrderRepository.Object,
+                _mockLocalizer.Object
+            );
         }
 
         /// <summary>
@@ -97,5 +106,8 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             Assert.True(int.Parse(product.Stock) <= 0);
             Assert.Contains("QuantityNotGreaterThanZero", errors);
         }
+
+        
     }
+
 }

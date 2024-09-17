@@ -11,74 +11,101 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using P3AddNewFunctionalityDotNetCore;
 using System.Linq;
+using Microsoft.AspNetCore.Hosting;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddControllersWithViews();
-
-builder.Services.AddLocalization(opts => { opts.ResourcesPath = "Resources"; });
-builder.Services.AddSingleton<ICart, Cart>();
-builder.Services.AddSingleton<ILanguageService, LanguageService>();
-builder.Services.AddTransient<IProductService, ProductService>();
-builder.Services.AddTransient<IProductRepository, ProductRepository>();
-builder.Services.AddTransient<IOrderService, OrderService>();
-builder.Services.AddTransient<IOrderRepository, OrderRepository>();
-builder.Services.AddMemoryCache();
-builder.Services.AddSession();
-builder.Services.AddMvc()
-    .AddViewLocalization(LanguageViewLocationExpanderFormat.Suffix, opts => { opts.ResourcesPath = "Resources"; })
-    .AddDataAnnotationsLocalization();
-
-builder.Services.AddDbContext<P3Referential>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("P3Referential")));
-
-builder.Services.AddDbContext<AppIdentityDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("P3Identity")));
-
-builder.Services.AddDefaultIdentity<IdentityUser>()
-        .AddEntityFrameworkStores<AppIdentityDbContext>()
-        .AddDefaultTokenProviders();
-
-builder.Services.ConfigureApplicationCookie(options =>
+public class Program
 {
-    options.LoginPath = "/Account/Login";
-});
+    public static void Main(string[] args)
+    {
+        CreateHostBuilder(args).Build().Run();
+    }
 
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-}
-else
-{
-    app.SeedDatabase(app.Configuration);
+    public static IHostBuilder CreateHostBuilder(string[] args) =>
+        Host.CreateDefaultBuilder(args)
+            .ConfigureWebHostDefaults(webBuilder =>
+            {
+                webBuilder.UseStartup<Startup>();
+            });
 }
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
+public class Startup
+{
+    public IConfiguration Configuration { get; }
 
-var supportedCultures = new[] { "en-GB", "en-US", "en", "fr-FR", "fr" };
-var localizationOptions = new RequestLocalizationOptions().SetDefaultCulture(supportedCultures[0])
-    .AddSupportedCultures(supportedCultures.ToArray())
-    .AddSupportedUICultures(supportedCultures);
-app.UseRequestLocalization(localizationOptions);
+    public Startup(IConfiguration configuration)
+    {
+        Configuration = configuration;
+    }
 
-app.UseSession();
+    public void ConfigureServices(IServiceCollection services)
+    {
+        // Add services to the container.
+        services.AddControllersWithViews();
 
-app.UseRouting();
+        services.AddLocalization(opts => { opts.ResourcesPath = "Resources"; });
+        services.AddSingleton<ICart, Cart>();
+        services.AddSingleton<ILanguageService, LanguageService>();
+        services.AddTransient<IProductService, ProductService>();
+        services.AddTransient<IProductRepository, ProductRepository>();
+        services.AddTransient<IOrderService, OrderService>();
+        services.AddTransient<IOrderRepository, OrderRepository>();
+        services.AddMemoryCache();
+        services.AddSession();
+        services.AddMvc()
+            .AddViewLocalization(LanguageViewLocationExpanderFormat.Suffix, opts => { opts.ResourcesPath = "Resources"; })
+            .AddDataAnnotationsLocalization();
 
-app.UseAuthentication();
-app.UseAuthorization();
+        services.AddDbContext<P3Referential>(options =>
+            options.UseSqlServer(Configuration.GetConnectionString("P3Referential")));
 
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Product}/{action=Index}/{id?}");
+        services.AddDbContext<AppIdentityDbContext>(options =>
+            options.UseSqlServer(Configuration.GetConnectionString("P3Identity")));
 
-await IdentitySeedData.EnsurePopulated(app);
+        services.AddDefaultIdentity<IdentityUser>()
+                .AddEntityFrameworkStores<AppIdentityDbContext>()
+                .AddDefaultTokenProviders();
 
-app.Run();
+        services.ConfigureApplicationCookie(options =>
+        {
+            options.LoginPath = "/Account/Login";
+        });
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        if (!env.IsDevelopment())
+        {
+            app.UseExceptionHandler("/Home/Error");
+            app.UseHsts();
+        }
+        else
+        {
+            app.SeedDatabase(Configuration);
+        }
+
+        app.UseHttpsRedirection();
+        app.UseStaticFiles();
+
+        var supportedCultures = new[] { "en-GB", "en-US", "en", "fr-FR", "fr" };
+        var localizationOptions = new RequestLocalizationOptions().SetDefaultCulture(supportedCultures[0])
+            .AddSupportedCultures(supportedCultures)
+            .AddSupportedUICultures(supportedCultures);
+        app.UseRequestLocalization(localizationOptions);
+
+        app.UseSession();
+
+        app.UseRouting();
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Product}/{action=Index}/{id?}");
+        });
+
+        IdentitySeedData.EnsurePopulated(app).Wait();
+    }
+}

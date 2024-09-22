@@ -43,7 +43,8 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact] 
         public void CheckProductModelErrors_MissingName_ReturnsError()
         {
-            // Arrange
+            // Setup
+            _mockLocalizer.Setup(x => x["MissingName"]).Returns(new LocalizedString("MissingName", "Le nom est obligatoire"));
             var product = new ProductViewModel { Name = "", Price = "10", Stock = "5" };
 
             // Act
@@ -56,8 +57,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_MissingPrice_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["MissingPrice"]).Returns(new LocalizedString("MissingPrice", "Le prix est obligatoire"));
             var product = new ProductViewModel { Name = "Test Product", Price = "", Stock = "5" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.True(string.IsNullOrEmpty(product.Price));
             Assert.Contains("MissingPrice", errors);
         }
@@ -65,8 +72,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_PriceNotANumber_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["PriceNotANumber"]).Returns(new LocalizedString("PriceNotANumber", "Le prix doit être un nombre"));
             var product = new ProductViewModel { Name = "Test Product", Price = "abc", Stock = "5" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.False(double.TryParse(product.Price, out _));
             Assert.Contains("PriceNotANumber", errors);
         }
@@ -74,8 +87,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_PriceNotGreaterThanZero_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["PriceNotGreaterThanZero"]).Returns(new LocalizedString("PriceNotGreaterThanZero", "Le prix doit être supérieur à zéro"));
             var product = new ProductViewModel { Name = "Test Product", Price = "0", Stock = "5" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.True(double.Parse(product.Price) <= 0);
             Assert.Contains("PriceNotGreaterThanZero", errors);
         }
@@ -83,8 +102,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_MissingQuantity_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["MissingQuantity"]).Returns(new LocalizedString("MissingQuantity", "La quantité est obligatoire"));
             var product = new ProductViewModel { Name = "Test Product", Price = "10", Stock = "" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.True(string.IsNullOrEmpty(product.Stock));
             Assert.Contains("MissingQuantity", errors);
         }
@@ -92,8 +117,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_QuantityNotAnInteger_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["QuantityNotAnInteger"]).Returns(new LocalizedString("QuantityNotAnInteger", "La quantité doit être un nombre entier"));
             var product = new ProductViewModel { Name = "Test Product", Price = "10", Stock = "abc" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.False(int.TryParse(product.Stock, out _));
             Assert.Contains("QuantityNotAnInteger", errors);
         }
@@ -101,13 +132,19 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         [Fact]
         public void CheckProductModelErrors_QuantityNotGreaterThanZero_ReturnsError()
         {
+            // Setup
+            _mockLocalizer.Setup(x => x["QuantityNotGreaterThanZero"]).Returns(new LocalizedString("QuantityNotGreaterThanZero", "La quantité doit être supérieure à zéro"));
             var product = new ProductViewModel { Name = "Test Product", Price = "10", Stock = "0" };
+
+            // Act
             var errors = _productService.CheckProductModelErrors(product);
+
+            // Assert
             Assert.True(int.Parse(product.Stock) <= 0);
             Assert.Contains("QuantityNotGreaterThanZero", errors);
         }
 
-        
+
     }
 
 }

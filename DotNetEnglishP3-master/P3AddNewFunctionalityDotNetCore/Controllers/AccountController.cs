@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -54,6 +55,41 @@ namespace P3AddNewFunctionalityDotNetCore.Controllers
         {
             await _signInManager.SignOutAsync();
             return Redirect(returnUrl);
+        }
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> LoginForTesting([FromForm] string username, [FromForm] string password)
+        {
+            Console.WriteLine($"LoginForTesting called with username: {username}");
+            var currentEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+            Console.WriteLine($"Current environment in LoginForTesting: {currentEnv}");
+
+            Console.WriteLine($"Current environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}");
+            if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Testing")
+            {
+                Console.WriteLine("Not in Development environment");
+                return BadRequest("Not in Development environment");
+            }
+
+            var user = await _userManager.FindByNameAsync(username);
+            if (user == null)
+            {
+                Console.WriteLine("User not found");
+                return BadRequest("User not found");
+            }
+
+            var result = await _signInManager.PasswordSignInAsync(username, password, false, false);
+            if (result.Succeeded)
+            {
+                Console.WriteLine("Login succeeded");
+                return Ok();
+            }
+
+            Console.WriteLine($"LoginForTesting called with username: {username}");
+            Console.WriteLine("User not found");
+            Console.WriteLine($"Login failed: {result}");
+            Console.WriteLine("Login succeeded");
+            return BadRequest($"Login failed: {result}");
         }
     }
 }

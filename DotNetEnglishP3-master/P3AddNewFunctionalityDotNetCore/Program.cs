@@ -83,7 +83,10 @@ public class Startup
             app.SeedDatabase(Configuration);
         }
 
-        app.UseHttpsRedirection();
+        if (!env.IsEnvironment("Testing"))
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseStaticFiles();
 
         var supportedCultures = new[] { "en-GB", "en-US", "en", "fr-FR", "fr" };

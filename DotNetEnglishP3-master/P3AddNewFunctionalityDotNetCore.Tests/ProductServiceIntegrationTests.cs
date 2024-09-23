@@ -56,6 +56,7 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
 
         public IntegrationTests(CustomWebApplicationFactory<Program> factory)
         {
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
             _factory = factory.WithWebHostBuilder(builder =>
             {
                 builder.ConfigureServices(services =>
@@ -66,54 +67,40 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         }
         private async Task AuthenticateAsAdmin(HttpClient client)
         {
-            Console.WriteLine("Starting AuthenticateAsAdmin method");
+            var currentEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
             // Données d'authentification de l'administrateur
             var loginData = new Dictionary<string, string>
             {
-                { "username", "testadmin" },  // Nom d'utilisateur de l'administrateur
-                { "password", "P@ssword456" }  // Mot de passe de l'administrateur
+                { "username", "testadmin" },  
+                { "password", "P@ssword456" }  
             };
-            Console.WriteLine($"Login data prepared: username={loginData["username"]}");
 
             // Contenu du formulaire pour l'envoi POST
             var content = new FormUrlEncodedContent(loginData);
-            Console.WriteLine("FormUrlEncodedContent created");
 
             // Envoi de la requête POST à l'endpoint de connexion pour l'authentification
-            Console.WriteLine("Sending POST request to /Account/LoginForTesting");
             var response = await client.PostAsync("/Account/LoginForTesting", content);
-            Console.WriteLine($"Response received. Status code: {response.StatusCode}");
 
             // Vérifie si l'authentification a réussi
             try
             {
                 response.EnsureSuccessStatusCode();
-                Console.WriteLine("Authentication successful");
             }
             catch (HttpRequestException ex)
             {
-                Console.WriteLine($"Authentication failed. Exception: {ex.Message}");
                 throw;
             }
 
-            Console.WriteLine("Fetching product list from /Product/Index");
             var productList = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"Product list fetched. Length: {productList.Length}");
-
-
-            var currentEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-            Console.WriteLine($"Current environment during test: {currentEnv}");
-
-            Console.WriteLine("AuthenticateAsAdmin method completed");
         }
+
         [Theory]
         [InlineData("/")]
         [InlineData("/Product")]
         [InlineData("/Cart")]
         public async Task Get_EndpointsReturnSuccessAndCorrectContentType(string url)
         {
-            Console.WriteLine($"Current environment during test: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}");
             // Arrange
             var client = _factory.CreateClient();
 
@@ -123,14 +110,12 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             // Assert
             response.EnsureSuccessStatusCode(); // Status Code 200-299
             Assert.Equal("text/html; charset=utf-8",
-                response.Content.Headers.ContentType.ToString());
+            response.Content.Headers.ContentType.ToString());
         }
 
         [Fact]
         public async Task TestAdminAddProduct()
         {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
-
             // Arrange
             var client = _factory.CreateClient();
             await AuthenticateAsAdmin(client); // Authentification
@@ -145,36 +130,19 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
 
             // Act
             var response = await client.PostAsJsonAsync("/Product/Create", newProduct);
-            // Log de la réponse
             var responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Response Content: {responseContent}");
+
             // Assert
             response.EnsureSuccessStatusCode();
             var productList = await client.GetStringAsync("/Product/Index");
             Assert.Contains("Test Product", productList);
         }
-        [Fact]
-        public void Test_Environment_Is_Set_To_Testing()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
-            var expectedEnvironment = "Testing";
 
-            // Act
-            var actualEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-
-            // Assert
-            Assert.Equal(expectedEnvironment, actualEnvironment);
-        }
         [Fact]
         public async Task TestAdminEditProduct()
         {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
-
             // Arrange
             var client = _factory.CreateClient();
-            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-            Console.WriteLine($"Current environment: {environment}");
             await AuthenticateAsAdmin(client); // Authentification
 
             // Vérifier qu'un produit existe déjà
@@ -192,7 +160,6 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             // Act
             var response = await client.PostAsJsonAsync("/Product/Create", updatedProduct);
             var responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Response Content: {responseContent}");
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -200,80 +167,50 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             Assert.Contains("Test Product ", productList);
             Assert.Contains("50", productList);
         }
+
         [Fact]
         public async Task TestAdminDeleteProduct()
         {
-            Console.WriteLine("[AdminProductDel] Début du test de suppression de produit");
+            // Arrange
             var client = _factory.CreateClient();
-            await AuthenticateAsAdmin(client);
-            Console.WriteLine("[AdminProductDel] Authentification admin réussie");
+            await AuthenticateAsAdmin(client); // Authentification
 
+            // Vérifier qu'un produit existe avant suppression
             var initialResponse = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"[AdminProductDel] Contenu initial de la page produits : {initialResponse.Substring(0, Math.Min(initialResponse.Length, 200))}...");
+            Assert.Contains("Test Product 2", initialResponse);
 
-            Console.WriteLine("[AdminProductDel] Tentative de suppression du produit 2");
-            var deleteResponse = await client.PostAsync("/Product/Delete/2", null);
-            Console.WriteLine($"[AdminProductDel] Statut de la réponse de suppression : {deleteResponse.StatusCode}");
+            // Act
+            var deleteResponse = await client.PostAsync("/Product/DeleteProduct/2", null);
+            var responseContent = await deleteResponse.Content.ReadAsStringAsync();
 
-            var clientResponse = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"[AdminProductDel] Contenu de la page produits après suppression : {clientResponse.Substring(0, Math.Min(clientResponse.Length, 200))}...");
-
-            Console.WriteLine("[AdminProductDel] Fin du test de suppression de produit");
+            // Assert
+            deleteResponse.EnsureSuccessStatusCode();  
+            var productListAfterDeletion = await client.GetStringAsync("/Product/Index");
+            Assert.DoesNotContain("Test Product 2", productListAfterDeletion);
         }
+
         [Fact]
         public async Task TestAddToCartAvailability()
         {
-            Console.WriteLine("[AddToCart] Début du test d'ajout au panier");
+            // Arrange
             var client = _factory.CreateClient();
 
-            var initialProductResponse = await client.GetStringAsync("/Product/Details/1");
-            Console.WriteLine($"[AddToCart] Détails initiaux du produit : {initialProductResponse.Substring(0, Math.Min(initialProductResponse.Length, 200))}...");
+            // Vérifier que le produit existe dans les détails avant l'ajout au panier
+            var initialProductResponse = await client.GetStringAsync("/Product/Index/1");
+            Assert.Contains("Test Product 1", initialProductResponse);
 
-            Console.WriteLine("[AddToCart] Tentative d'ajout du produit 1 au panier");
+            // Act
             var addToCartResponse = await client.PostAsync("/Cart/AddToCart/1", null);
-            Console.WriteLine($"[AddToCart] Statut de la réponse d'ajout au panier : {addToCartResponse.StatusCode}");
+            var responseContent = await addToCartResponse.Content.ReadAsStringAsync();
 
+            // Assert
+            addToCartResponse.EnsureSuccessStatusCode();  // Vérifier que l'ajout au panier a réussi
             var cartResponse = await client.GetStringAsync("/Cart/Index");
-            Console.WriteLine($"[AddToCart] Contenu du panier : {cartResponse.Substring(0, Math.Min(cartResponse.Length, 200))}...");
+            Assert.Contains("Test Product 1", cartResponse);
 
-            var updatedProductResponse = await client.GetStringAsync("/Product/Details/1");
-            Console.WriteLine($"[AddToCart] Détails du produit après ajout au panier : {updatedProductResponse.Substring(0, Math.Min(updatedProductResponse.Length, 200))}...");
-
-            Console.WriteLine("[AddToCart] Fin du test d'ajout au panier");
-        }
-        [Fact]
-        public async Task TestProductConsistency()
-        {
-            Console.WriteLine("[AdminProductConsistency] Début du test de cohérence");
-            var client = _factory.CreateClient();
-            await AuthenticateAsAdmin(client);
-            Console.WriteLine("[AdminProductConsistency] Authentification admin réussie");
-
-            var initialResponse = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"[AdminProductConsistency] Liste initiale des produits : {initialResponse.Substring(0, Math.Min(initialResponse.Length, 200))}...");
-
-            var newProduct = new ProductViewModel
-            {
-                Name = "Consistency Test Product",
-                Price = "25.99",
-                Stock = "100",
-                Description = "Test description"
-            };
-            Console.WriteLine($"[AdminProductConsistency] Tentative d'ajout du produit : {newProduct.Name}");
-            var addResponse = await client.PostAsJsonAsync("/Product/Create", newProduct);
-            Console.WriteLine($"[AdminProductConsistency] Statut de la réponse d'ajout : {addResponse.StatusCode}");
-
-            var productListAfterAdd = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"[AdminProductConsistency] Liste des produits après ajout : {productListAfterAdd.Substring(0, Math.Min(productListAfterAdd.Length, 200))}...");
-
-            Console.WriteLine("[AdminProductConsistency] Tentative de suppression du produit ajouté");
-            var deleteResponse = await client.PostAsync($"/Product/Delete/3", null);
-            Console.WriteLine($"[AdminProductConsistency] Statut de la réponse de suppression : {deleteResponse.StatusCode}");
-
-            var productListAfterDelete = await client.GetStringAsync("/Product/Index");
-            Console.WriteLine($"[AdminProductConsistency] Liste des produits après suppression : {productListAfterDelete.Substring(0, Math.Min(productListAfterDelete.Length, 200))}...");
-
-            Console.WriteLine("[AdminProductConsistency] Fin du test de cohérence");
+            // Vérification que les détails du produit sont mis à jour après ajout au panier
+            var updatedProductResponse = await client.GetStringAsync("/Product/Index/1");
+            Assert.Contains("Test Product 1", updatedProductResponse);
         }
     }
 }

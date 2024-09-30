@@ -211,6 +211,7 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             // Vérification que les détails du produit sont mis à jour après ajout au panier
             var updatedProductResponse = await client.GetStringAsync("/Product/Index/1");
             Assert.Contains("Test Product 1", updatedProductResponse);
+            //TEST GIT
         }
     }
 }

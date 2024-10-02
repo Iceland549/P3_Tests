@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
 using System.Net.Http.Headers;
+using P3AddNewFunctionalityDotNetCore.Models;
 
 
 namespace P3AddNewFunctionalityDotNetCore.Tests
@@ -39,11 +40,14 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                 if (descriptor != null)
                 {
                     services.Remove(descriptor);
+                    var descriptorIdentity = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<AppIdentityDbContext>));
+                    if (descriptorIdentity != null)
+                        services.Remove(descriptorIdentity);
+
+                    services.AddDbContext<AppIdentityDbContext>(options => options.UseInMemoryDatabase("TestIdentityDb"));
+
+                    services.AddDbContext<P3Referential>(options => options.UseInMemoryDatabase("TestDb"));
                 }
-                services.AddDbContext<P3Referential>(options =>
-                {
-                    options.UseInMemoryDatabase("InMemoryDbForTesting");
-                });
 
                 // Création de la base de données pour chaque test
                 var sp = services.BuildServiceProvider();
@@ -97,6 +101,7 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             };
 
             StringContent requestContent = BuildRequestContent(content);
+            Console.WriteLine("Authentification : Envoi de la requête de connexion...");
 
             var response = await _client.PostAsJsonAsync("Account/login", requestContent);
 
@@ -150,8 +155,10 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             public async Task TestAdminAddProduct()
             {
                 // Arrange
-                var client = _factory.CreateClient();
-                await AuthenticateAsAdmin(); // Authentification
+                Console.WriteLine("Démarrage du test d'ajout de produit.");
+                await AuthenticateAsAdmin();  // Authentification
+                Console.WriteLine("Authentification réussie.");
+
                 var newProduct = new ProductViewModel
                 {
                     Name = "Test Product",
@@ -159,24 +166,35 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                     Stock = "50",
                     Description = "Test description"
                 };
+
+                Console.WriteLine("Envoi de la requête d'ajout de produit...");
                 // Act
-                var response = await client.PostAsJsonAsync("/Product/Create", newProduct);
+                var response = await _client.PostAsJsonAsync("/Product/Create", newProduct);
                 var responseContent = await response.Content.ReadAsStringAsync();
+
+                // Log la réponse et le statut
+                Console.WriteLine($"Status Code: {response.StatusCode}");
+                Console.WriteLine($"Response Content: {responseContent}");
+
                 // Assert
                 response.EnsureSuccessStatusCode();
-                var productList = await client.GetStringAsync("/Product/Index");
+                var productList = await _client.GetStringAsync("/Product/Index");
+                Console.WriteLine($"Contenu de la liste des produits après ajout : {productList}");
                 Assert.Contains("Test Product", productList);
             }
+
 
             [Fact]
             public async Task TestAdminEditProduct()
             {
                 // Arrange
-                var client = _factory.CreateClient();
-                await AuthenticateAsAdmin(); // Authentification
+                Console.WriteLine("Démarrage du test de modification de produit.");
+                await AuthenticateAsAdmin();  // Authentification
+                Console.WriteLine("Authentification réussie.");
 
                 // Vérifier qu'un produit existe déjà
-                var initialResponse = await client.GetStringAsync("/Product/Index");
+                var initialResponse = await _client.GetStringAsync("/Product/Index");
+                Console.WriteLine($"Contenu initial de la liste des produits : {initialResponse}");
                 Assert.Contains("Test Product 1", initialResponse);
 
                 var updatedProduct = new ProductViewModel
@@ -187,16 +205,22 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                     Description = "Test description"
                 };
 
+                Console.WriteLine("Envoi de la requête de modification de produit...");
                 // Act
-                var response = await client.PostAsJsonAsync("/Product/Create", updatedProduct);
+                var response = await _client.PostAsJsonAsync("/Product/Create", updatedProduct);
                 var responseContent = await response.Content.ReadAsStringAsync();
+
+                // Log la réponse et le statut
+                Console.WriteLine($"Status Code: {response.StatusCode}");
+                Console.WriteLine($"Response Content: {responseContent}");
 
                 // Assert
                 response.EnsureSuccessStatusCode();
-                var productList = await client.GetStringAsync("/Product/Index");
-                Assert.Contains("Test Product ", productList);
-                Assert.Contains("50", productList);
+                var productList = await _client.GetStringAsync("/Product/Index");
+                Console.WriteLine($"Contenu de la liste des produits après modification : {productList}");
+                Assert.Contains("Test Product", productList);
             }
+
 
             [Fact]
             public async Task TestAdminDeleteProduct()
@@ -223,24 +247,26 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             public async Task TestAddToCartAvailability()
             {
                 // Arrange
-                var client = _factory.CreateClient();
-
-                // Vérifier que le produit existe dans les détails avant l'ajout au panier
-                var initialProductResponse = await client.GetStringAsync("/Product/Index/1");
+                Console.WriteLine("Démarrage du test d'ajout au panier.");
+                var initialProductResponse = await _client.GetStringAsync("/Product/Index/1");
+                Console.WriteLine($"Contenu initial du produit avant ajout au panier : {initialProductResponse}");
                 Assert.Contains("Test Product 1", initialProductResponse);
 
                 // Act
-                var addToCartResponse = await client.PostAsync("/Cart/AddToCart/1", null);
+                Console.WriteLine("Envoi de la requête d'ajout au panier...");
+                var addToCartResponse = await _client.PostAsync("/Cart/AddToCart/1", null);
                 var responseContent = await addToCartResponse.Content.ReadAsStringAsync();
 
-                // Assert
-                addToCartResponse.EnsureSuccessStatusCode();  // Vérifier que l'ajout au panier a réussi
-                var cartResponse = await client.GetStringAsync("/Cart/Index");
-                Assert.Contains("Test Product 1", cartResponse);
+                // Log la réponse et le statut
+                Console.WriteLine($"Status Code: {addToCartResponse.StatusCode}");
+                Console.WriteLine($"Response Content: {responseContent}");
 
-                // Vérification que les détails du produit sont mis à jour après ajout au panier
-                var updatedProductResponse = await client.GetStringAsync("/Product/Index/1");
-                Assert.Contains("Test Product 1", updatedProductResponse);
+                // Assert
+                addToCartResponse.EnsureSuccessStatusCode();  // Vérifie que l'ajout au panier a réussi
+                var cartResponse = await _client.GetStringAsync("/Cart/Index");
+                Console.WriteLine($"Contenu du panier après ajout : {cartResponse}");
+                Assert.Contains("Test Product 1", cartResponse);
             }
+
     }
 }

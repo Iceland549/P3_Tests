@@ -13,15 +13,24 @@ using System.Net.Http.Json;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net;
+using Microsoft.AspNetCore.TestHost;
+using Newtonsoft.Json;
+using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
+using System.Net.Http.Headers;
+
 
 namespace P3AddNewFunctionalityDotNetCore.Tests
 {
     // Configuration de l'environnement de test
-    public class CustomWebApplicationFactory<Program> : WebApplicationFactory<Program> where Program : class
+    public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram> where TProgram : class
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.UseEnvironment("Testing");
             builder.ConfigureServices(services =>
             {
                 // Remplacement de la base de données réelle par une base de données en mémoire pour les tests
@@ -44,7 +53,6 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                     var db = scopedServices.GetRequiredService<P3Referential>();
                     db.Database.EnsureDeleted(); // Supprime la base de données
                     db.Database.EnsureCreated(); // Crée une nouvelle base de données
-                    DbInitializerExtension.InitializeTestData(scopedServices);
                 }
             });
         }
@@ -52,166 +60,187 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
 
     public class IntegrationTests : IClassFixture<CustomWebApplicationFactory<Program>>
     {
-        private readonly WebApplicationFactory<Program> _factory;
-
+        private readonly CustomWebApplicationFactory<Program> _factory;
+        private readonly HttpClient _client;
         public IntegrationTests(CustomWebApplicationFactory<Program> factory)
         {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
-            _factory = factory.WithWebHostBuilder(builder =>
+            _factory = factory;
+            _client = _factory.WithWebHostBuilder(builder =>
             {
-                builder.ConfigureServices(services =>
+                builder.ConfigureTestServices(services =>
                 {
-                    DbInitializerExtension.InitializeTestData(services.BuildServiceProvider());
+                    services.AddSingleton<IPolicyEvaluator, FakePolicyEvaluator>();
                 });
-            });
-        }
-        private async Task AuthenticateAsAdmin(HttpClient client)
-        {
-            var currentEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-
-            // Données d'authentification de l'administrateur
-            var loginData = new Dictionary<string, string>
+            }).CreateClient(new WebApplicationFactoryClientOptions
             {
-                { "username", "testadmin" },  
-                { "password", "P@ssword456" }  
+                AllowAutoRedirect = false
+            });
+        
+            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+
+        public static StringContent BuildRequestContent<T>(T content)
+        {
+            string serialized = JsonConvert.SerializeObject(content);
+
+            return new StringContent(serialized, Encoding.UTF8, "application/json");
+        }
+
+        // Authentification comme Admin
+        private async Task AuthenticateAsAdmin()
+        {
+            LoginModel content = new LoginModel
+            {
+                Name = "Admin",
+                Password = "P@ssword123",
+                ReturnUrl = "/"
             };
 
-            // Contenu du formulaire pour l'envoi POST
-            var content = new FormUrlEncodedContent(loginData);
+            StringContent requestContent = BuildRequestContent(content);
 
-            // Envoi de la requête POST à l'endpoint de connexion pour l'authentification
-            var response = await client.PostAsync("/Account/LoginForTesting", content);
+            var response = await _client.PostAsJsonAsync("Account/login", requestContent);
 
-            // Vérifie si l'authentification a réussi
-            try
+            var responseContent = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"Status Code: {response.StatusCode}");
+            Console.WriteLine($"Response Content: {responseContent}");
+            response.EnsureSuccessStatusCode();
+        }
+        public class FakePolicyEvaluator : IPolicyEvaluator
+        {
+            public virtual async Task<AuthenticateResult> AuthenticateAsync(AuthorizationPolicy policy, HttpContext context)
             {
-                response.EnsureSuccessStatusCode();
-            }
-            catch (HttpRequestException ex)
-            {
-                throw;
+                var principal = new ClaimsPrincipal();
+
+                principal.AddIdentity(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.Name, "Admin"),
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "FakeScheme"));
+
+                return await Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal,
+                 new AuthenticationProperties(), "FakeScheme")));
             }
 
-            var productList = await client.GetStringAsync("/Product/Index");
+            public virtual async Task<PolicyAuthorizationResult> AuthorizeAsync(AuthorizationPolicy policy,
+             AuthenticateResult authenticationResult, HttpContext context, object resource)
+            {
+                return await Task.FromResult(PolicyAuthorizationResult.Success());
+            }
         }
 
         [Theory]
-        [InlineData("/")]
-        [InlineData("/Product")]
-        [InlineData("/Cart")]
-        public async Task Get_EndpointsReturnSuccessAndCorrectContentType(string url)
-        {
-            // Arrange
-            var client = _factory.CreateClient();
-
-            // Act
-            var response = await client.GetAsync(url);
-
-            // Assert
-            response.EnsureSuccessStatusCode(); // Status Code 200-299
-            Assert.Equal("text/html; charset=utf-8",
-            response.Content.Headers.ContentType.ToString());
-        }
-
-        [Fact]
-        public async Task TestAdminAddProduct()
-        {
-            // Arrange
-            var client = _factory.CreateClient();
-            await AuthenticateAsAdmin(client); // Authentification
-
-            var newProduct = new ProductViewModel
+            [InlineData("/")]
+            [InlineData("/Product")]
+            [InlineData("/Cart")]
+            public async Task Get_EndpointsReturnSuccessAndCorrectContentType(string url)
             {
-                Name = "Test Product",
-                Price = "10.00",
-                Stock = "50",
-                Description = "Test description"
-            };
+                // Arrange
+                var client = _factory.CreateClient();
 
-            // Act
-            var response = await client.PostAsJsonAsync("/Product/Create", newProduct);
-            var responseContent = await response.Content.ReadAsStringAsync();
+                // Act
+                var response = await client.GetAsync(url);
 
-            // Assert
-            response.EnsureSuccessStatusCode();
-            var productList = await client.GetStringAsync("/Product/Index");
-            Assert.Contains("Test Product", productList);
-        }
+                // Assert
+                response.EnsureSuccessStatusCode(); // Status Code 200-299
+                Assert.Equal("text/html; charset=utf-8",
+                response.Content.Headers.ContentType.ToString());
+            }
 
-        [Fact]
-        public async Task TestAdminEditProduct()
-        {
-            // Arrange
-            var client = _factory.CreateClient();
-            await AuthenticateAsAdmin(client); // Authentification
-
-            // Vérifier qu'un produit existe déjà
-            var initialResponse = await client.GetStringAsync("/Product/Index");
-            Assert.Contains("Test Product 1", initialResponse);
-
-            var updatedProduct = new ProductViewModel
+            [Fact]
+            public async Task TestAdminAddProduct()
             {
-                Name = "Test Product",
-                Price = "10.00",
-                Stock = "50",
-                Description = "Test description"
-            };
+                // Arrange
+                var client = _factory.CreateClient();
+                await AuthenticateAsAdmin(); // Authentification
+                var newProduct = new ProductViewModel
+                {
+                    Name = "Test Product",
+                    Price = "10.00",
+                    Stock = "50",
+                    Description = "Test description"
+                };
+                // Act
+                var response = await client.PostAsJsonAsync("/Product/Create", newProduct);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                // Assert
+                response.EnsureSuccessStatusCode();
+                var productList = await client.GetStringAsync("/Product/Index");
+                Assert.Contains("Test Product", productList);
+            }
 
-            // Act
-            var response = await client.PostAsJsonAsync("/Product/Create", updatedProduct);
-            var responseContent = await response.Content.ReadAsStringAsync();
+            [Fact]
+            public async Task TestAdminEditProduct()
+            {
+                // Arrange
+                var client = _factory.CreateClient();
+                await AuthenticateAsAdmin(); // Authentification
 
-            // Assert
-            response.EnsureSuccessStatusCode();
-            var productList = await client.GetStringAsync("/Product/Index");
-            Assert.Contains("Test Product ", productList);
-            Assert.Contains("50", productList);
-        }
+                // Vérifier qu'un produit existe déjà
+                var initialResponse = await client.GetStringAsync("/Product/Index");
+                Assert.Contains("Test Product 1", initialResponse);
 
-        [Fact]
-        public async Task TestAdminDeleteProduct()
-        {
-            // Arrange
-            var client = _factory.CreateClient();
-            await AuthenticateAsAdmin(client); // Authentification
+                var updatedProduct = new ProductViewModel
+                {
+                    Name = "Test Product",
+                    Price = "10.00",
+                    Stock = "50",
+                    Description = "Test description"
+                };
 
-            // Vérifier qu'un produit existe avant suppression
-            var initialResponse = await client.GetStringAsync("/Product/Index");
-            Assert.Contains("Test Product 2", initialResponse);
+                // Act
+                var response = await client.PostAsJsonAsync("/Product/Create", updatedProduct);
+                var responseContent = await response.Content.ReadAsStringAsync();
 
-            // Act
-            var deleteResponse = await client.PostAsync("/Product/DeleteProduct/2", null);
-            var responseContent = await deleteResponse.Content.ReadAsStringAsync();
+                // Assert
+                response.EnsureSuccessStatusCode();
+                var productList = await client.GetStringAsync("/Product/Index");
+                Assert.Contains("Test Product ", productList);
+                Assert.Contains("50", productList);
+            }
 
-            // Assert
-            deleteResponse.EnsureSuccessStatusCode();  
-            var productListAfterDeletion = await client.GetStringAsync("/Product/Index");
-            Assert.DoesNotContain("Test Product 2", productListAfterDeletion);
-        }
+            [Fact]
+            public async Task TestAdminDeleteProduct()
+            {
+                // Arrange
+                var client = _factory.CreateClient();
+                await AuthenticateAsAdmin(); // Authentification
 
-        [Fact]
-        public async Task TestAddToCartAvailability()
-        {
-            // Arrange
-            var client = _factory.CreateClient();
+                // Vérifier qu'un produit existe avant suppression
+                var initialResponse = await client.GetStringAsync("/Product/Index");
+                Assert.Contains("Test Product 2", initialResponse);
 
-            // Vérifier que le produit existe dans les détails avant l'ajout au panier
-            var initialProductResponse = await client.GetStringAsync("/Product/Index/1");
-            Assert.Contains("Test Product 1", initialProductResponse);
+                // Act
+                var deleteResponse = await client.PostAsync("/Product/DeleteProduct/2", null);
+                var responseContent = await deleteResponse.Content.ReadAsStringAsync();
 
-            // Act
-            var addToCartResponse = await client.PostAsync("/Cart/AddToCart/1", null);
-            var responseContent = await addToCartResponse.Content.ReadAsStringAsync();
+                // Assert
+                deleteResponse.EnsureSuccessStatusCode();  
+                var productListAfterDeletion = await client.GetStringAsync("/Product/Index");
+                Assert.DoesNotContain("Test Product 2", productListAfterDeletion);
+            }
 
-            // Assert
-            addToCartResponse.EnsureSuccessStatusCode();  // Vérifier que l'ajout au panier a réussi
-            var cartResponse = await client.GetStringAsync("/Cart/Index");
-            Assert.Contains("Test Product 1", cartResponse);
+            [Fact]
+            public async Task TestAddToCartAvailability()
+            {
+                // Arrange
+                var client = _factory.CreateClient();
 
-            // Vérification que les détails du produit sont mis à jour après ajout au panier
-            var updatedProductResponse = await client.GetStringAsync("/Product/Index/1");
-            Assert.Contains("Test Product 1", updatedProductResponse);
-            //TEST GIT
-        }
+                // Vérifier que le produit existe dans les détails avant l'ajout au panier
+                var initialProductResponse = await client.GetStringAsync("/Product/Index/1");
+                Assert.Contains("Test Product 1", initialProductResponse);
+
+                // Act
+                var addToCartResponse = await client.PostAsync("/Cart/AddToCart/1", null);
+                var responseContent = await addToCartResponse.Content.ReadAsStringAsync();
+
+                // Assert
+                addToCartResponse.EnsureSuccessStatusCode();  // Vérifier que l'ajout au panier a réussi
+                var cartResponse = await client.GetStringAsync("/Cart/Index");
+                Assert.Contains("Test Product 1", cartResponse);
+
+                // Vérification que les détails du produit sont mis à jour après ajout au panier
+                var updatedProductResponse = await client.GetStringAsync("/Product/Index/1");
+                Assert.Contains("Test Product 1", updatedProductResponse);
+            }
     }
 }

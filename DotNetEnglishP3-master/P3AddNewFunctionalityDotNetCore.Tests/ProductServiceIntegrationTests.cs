@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using static P3AddNewFunctionalityDotNetCore.Tests.IntegrationTests;
 
 
 namespace P3AddNewFunctionalityDotNetCore.Tests
@@ -38,6 +39,10 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         {
             builder.ConfigureServices(services =>
             {
+                services.AddControllersWithViews(options =>
+                {
+                    options.Filters.Add(new IgnoreAntiforgeryTokenAttribute()); // Désactive l'antiforgery dans les tests
+                });
                 var descriptorReferential = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<P3Referential>));
                 if (descriptorReferential != null)
                     services.Remove(descriptorReferential);
@@ -50,18 +55,27 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                 services.AddDbContext<AppIdentityDbContext>(options => options.UseInMemoryDatabase("TestIdentityDb"));
                 services.AddDbContext<P3Referential>(options => options.UseInMemoryDatabase("TestDb"));
 
+                services.AddSingleton<IPolicyEvaluator, FakePolicyEvaluator>();
+
+
                 // Initialisation de la base de données (peut être commenté si non nécessaire)
                 var sp = services.BuildServiceProvider();
                 using (var scope = sp.CreateScope())
                 {
                     var scopedServices = scope.ServiceProvider;
                     var db = scopedServices.GetRequiredService<P3Referential>();
-                    Utilities.InitializeDatabase(db);
+                    var dbIdentity = scopedServices.GetRequiredService<AppIdentityDbContext>();
 
+                    Utilities.InitializeDatabase(db);
+                    if (db.Database.IsRelational())
+                    {
+                        // Si c'est une base relationnelle, on peut appliquer les migrations
+                        db.Database.Migrate();
+                        dbIdentity.Database.Migrate();
+                    }
 
                     // Créer un utilisateur Admin pour les tests d'authentification
                     var userManager = scopedServices.GetRequiredService<UserManager<IdentityUser>>();
-                    var dbIdentity = scopedServices.GetRequiredService<AppIdentityDbContext>();
                     dbIdentity.Database.EnsureCreated();
 
                     if (userManager.FindByNameAsync("Admin").Result == null)

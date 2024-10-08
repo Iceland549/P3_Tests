@@ -39,10 +39,6 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
         {
             builder.ConfigureServices(services =>
             {
-                services.AddControllersWithViews(options =>
-                {
-                    options.Filters.Add(new IgnoreAntiforgeryTokenAttribute()); // Désactive l'antiforgery dans les tests
-                });
                 var descriptorReferential = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<P3Referential>));
                 if (descriptorReferential != null)
                     services.Remove(descriptorReferential);
@@ -67,13 +63,20 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
                     var dbIdentity = scopedServices.GetRequiredService<AppIdentityDbContext>();
 
                     Utilities.InitializeDatabase(db);
-                    if (db.Database.IsRelational())
+                    //if (db.Database.IsRelational())
+                    //{
+                    //    // Si c'est une base relationnelle, on peut appliquer les migrations
+                    //    db.Database.Migrate();
+                    //    dbIdentity.Database.Migrate();
+                    //}
+                    if (!db.Database.IsInMemory())
                     {
-                        // Si c'est une base relationnelle, on peut appliquer les migrations
                         db.Database.Migrate();
+                    }
+                    if (!dbIdentity.Database.IsInMemory())
+                    {
                         dbIdentity.Database.Migrate();
                     }
-
                     // Créer un utilisateur Admin pour les tests d'authentification
                     var userManager = scopedServices.GetRequiredService<UserManager<IdentityUser>>();
                     dbIdentity.Database.EnsureCreated();
@@ -161,41 +164,6 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             var response = await _client.PostAsync("Account/login", requestContent);
             response.EnsureSuccessStatusCode(); // Vérifie que l'authentification a réussi
         }
-
-        [Theory]
-        [InlineData("/")]
-        [InlineData("/Product")]
-        [InlineData("/Cart")]
-        public async Task Get_EndpointsReturnSuccessAndCorrectContentType(string url)
-        {
-            var response = await _client.GetAsync(url);
-            response.EnsureSuccessStatusCode(); // Status Code 200-299
-            Assert.Equal("text/html; charset=utf-8", response.Content.Headers.ContentType.ToString());
-        }
-
-        [Fact]
-        public async Task TestAdminAddProduct()
-        {
-            Console.WriteLine("Démarrage du test d'ajout de produit.");
-            await AuthenticateAsAdmin(); // Authentification
-            Console.WriteLine("Authentification réussie.");
-
-            var newProduct = new ProductViewModel
-            {
-                Name = "Test Product",
-                Price = "10.00",
-                Stock = "50",
-                Description = "Test description"
-            };
-
-            var response = await _client.PostAsJsonAsync("/Product/Create", newProduct);
-            response.EnsureSuccessStatusCode(); // Vérifie que l'ajout a réussi
-
-            var productList = await _client.GetStringAsync("/Product/Index");
-            Assert.Contains("Test Product", productList); // Vérifie que le produit a été ajouté
-        }
-
-
         public class FakePolicyEvaluator : IPolicyEvaluator
         {
             public virtual async Task<AuthenticateResult> AuthenticateAsync(AuthorizationPolicy policy, HttpContext context)
@@ -219,6 +187,38 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             }
         }
 
+        [Theory]
+        [InlineData("/")]
+        [InlineData("/Product")]
+        [InlineData("/Cart")]
+        public async Task Get_EndpointsReturnSuccessAndCorrectContentType(string url)
+        {
+            var response = await _client.GetAsync(url);
+            response.EnsureSuccessStatusCode(); // Status Code 200-299
+            Assert.Equal("text/html; charset=utf-8", response.Content.Headers.ContentType.ToString());
+        }
+
+        [Fact]
+        public async Task TestAdminAddProduct()
+        {
+            Console.WriteLine("Démarrage du test d'ajout de produit.");
+            await AuthenticateAsAdmin(); // Authentification
+            Console.WriteLine("Authentification réussie.");
+
+            var newProduct = new ProductViewModel
+            {
+                Name = "Admin Product",
+                Price = "10.00",
+                Stock = "50",
+                Description = "Test description"
+            };
+
+            var response = await _client.PostAsJsonAsync("/Product/Create", newProduct);
+            response.EnsureSuccessStatusCode(); // Vérifie que l'ajout a réussi
+
+            var productList = await _client.GetStringAsync("/Product/Index");
+            Assert.Contains("Admin Product", productList); // Vérifie que le produit a été ajouté
+        }
 
         [Fact]
         public async Task TestAdminEditProduct()
@@ -235,7 +235,7 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
 
             var updatedProduct = new ProductViewModel
             {
-                Name = "Test Product",
+                Name = "Edit Product",
                 Price = "10.00",
                 Stock = "50",
                 Description = "Test description"
@@ -254,30 +254,30 @@ namespace P3AddNewFunctionalityDotNetCore.Tests
             response.EnsureSuccessStatusCode();
             var productList = await _client.GetStringAsync("/Product/Index");
             Console.WriteLine($"Contenu de la liste des produits après modification : {productList}");
-            Assert.Contains("Test Product", productList);
+            Assert.Contains("Edit Product", productList);
         }
 
 
-       /* [Fact]
+        [Fact]
         public async Task TestAdminDeleteProduct()
         {
             // Arrange
-           // var client = _factory.CreateClient();
+            //var client = factory.CreateClient();
             await AuthenticateAsAdmin(); // Authentification
 
             // Vérifier qu'un produit existe avant suppression
-            var initialResponse = await client.GetStringAsync("/Product/Index");
+            var initialResponse = await _client.GetStringAsync("/Product/Index");
             Assert.Contains("Test Product 2", initialResponse);
 
             // Act
-            var deleteResponse = await client.PostAsync("/Product/DeleteProduct/2", null);
+            var deleteResponse = await _client.PostAsync("/Product/DeleteProduct/2", null);
             var responseContent = await deleteResponse.Content.ReadAsStringAsync();
 
             // Assert
             deleteResponse.EnsureSuccessStatusCode();
-            var productListAfterDeletion = await client.GetStringAsync("/Product/Index");
+            var productListAfterDeletion = await _client.GetStringAsync("/Product/Index");
             Assert.DoesNotContain("Test Product 2", productListAfterDeletion);
-        }*/
+        }
 
         [Fact]
         public async Task TestAddToCartAvailability()

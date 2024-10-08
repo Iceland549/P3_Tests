@@ -43,7 +43,7 @@ namespace P3AddNewFunctionalityDotNetCore.Controllers
 
         [Authorize]
         [HttpPost]
-        public IActionResult Create(ProductViewModel product)
+        public IActionResult Create([FromBody] ProductViewModel product)
         {
             List<string> modelErrors = _productService.CheckProductModelErrors(product);           
 
